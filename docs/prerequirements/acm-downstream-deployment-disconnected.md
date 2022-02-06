@@ -31,10 +31,12 @@ To do that, you will need to follow [this steps](https://gist.github.com/cdoan1/
 
 ```sh
 #!/bin/bash
-export PULL_SECRET_JSON=/home/kni/jparrill/pull_secret_acm.json
-export LOCAL_REGISTRY=$(hostname):5000
-export SNAPSHOT=2.3.0-DOWNSTREAM-2021-06-16-09-34-33
-export ACM_OP_BUNDLE=v2.3.0-127
+export PULL_SECRET_JSON=/root/pull-secret.json
+export LOCAL_REGISTRY=service-node.clus3b.t5g.lab.eng.bos.redhat.com:443
+export LOCAL_REGISTRY_USERNAME=admin
+export LOCAL_REGISTRY_PASSWD=password
+export SNAPSHOT=2.4.2-DOWNSTREAM-2021-12-17-20-56-13
+export ACM_OP_BUNDLE=v2.4.2-23
 export IMAGE_INDEX=quay.io/acm-d/acm-custom-registry
 export BUILD_FOLDER=./build
 
@@ -44,8 +46,8 @@ rm -rf ${BUILD_FOLDER}
 # Copy ACM Custom Registry index and bundle images
 echo
 echo ">>>>>>>>>>>>>>> Cloning the Index and Bundle images..."
-skopeo copy --authfile ${PULL_SECRET_JSON} --all docker://quay.io/acm-d/acm-custom-registry:${SNAPSHOT} docker://bm-cluster-1-hyper.e2e.bos.redhat.com:5000/rhacm2/acm-custom-registry:${SNAPSHOT}
-skopeo copy --authfile ${PULL_SECRET_JSON} --all docker://quay.io/acm-d/acm-operator-bundle:${ACM_OP_BUNDLE} docker://bm-cluster-1-hyper.e2e.bos.redhat.com:5000/rhacm2/acm-operator-bundle:${ACM_OP_BUNDLE}
+skopeo copy --dest-creds $LOCAL_REGISTRY_USERNAME:$LOCAL_REGISTRY_PASSWD  --all docker://quay.io/acm-d/acm-custom-registry:${SNAPSHOT} docker://${LOCAL_REGISTRY}/rhacm2/acm-custom-registry:${SNAPSHOT}
+skopeo copy --dest-creds $LOCAL_REGISTRY_USERNAME:$LOCAL_REGISTRY_PASSWD  --all docker://quay.io/acm-d/acm-operator-bundle:${ACM_OP_BUNDLE} docker://${LOCAL_REGISTRY}/rhacm2/acm-operator-bundle:${ACM_OP_BUNDLE}
 
 # Generate Mapping.txt
 echo
@@ -58,7 +60,7 @@ sed -i s#registry.redhat.io/rhacm2/#quay.io/acm-d/# ${BUILD_FOLDER}/mapping.txt
 # Mirror the images into your mirror registry.
 echo
 echo ">>>>>>>>>>>>>>> Mirroring images..."
-oc image mirror -f ${BUILD_FOLDER}/mapping.txt -a ${PULL_SECRET_JSON} --filter-by-os=.* --keep-manifest-list --continue-on-error=true
+oc image mirror -f ${BUILD_FOLDER}/mapping.txt -a ${PULL_SECRET_JSON} --filter-by-os=.* --keep-manifest-list --continue-on-error=true --max-per-registry=1
 
 echo
 echo "export CUSTOM_REGISTRY_REPO=${LOCAL_REGISTRY}/rhacm2"
