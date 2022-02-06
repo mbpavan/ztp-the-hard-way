@@ -83,13 +83,13 @@ metadata:
 spec:
   repositoryDigestMirrors:
     - mirrors:
-        - bm-cluster-1-hyper.e2e.bos.redhat.com:5000/olm/openshift4-ose-local-storage-static-provisioner
+        - service-node.clus3b.t5g.lab.eng.bos.redhat.com:443/olm/openshift4-ose-local-storage-static-provisioner
       source: registry.redhat.io/openshift4/ose-local-storage-static-provisioner
     - mirrors:
-        - bm-cluster-1-hyper.e2e.bos.redhat.com:5000/olm/openshift4-ose-local-storage-operator-bundle
+        - service-node.clus3b.t5g.lab.eng.bos.redhat.com:443/olm/openshift4-ose-local-storage-operator-bundle
       source: registry.redhat.io/openshift4/ose-local-storage-operator-bundle
     - mirrors:
-        - bm-cluster-1-hyper.e2e.bos.redhat.com:5000/olm/openshift4-ose-local-storage-operator
+        - service-node.clus3b.t5g.lab.eng.bos.redhat.com:443/olm/openshift4-ose-local-storage-operator
       source: registry.redhat.io/openshift4/ose-local-storage-operator
 ```
 
@@ -102,12 +102,12 @@ This is a sample of a `CatalogSource`:
 apiVersion: operators.coreos.com/v1alpha1
 kind: CatalogSource
 metadata:
-  name: custom-community-operator-catalog-v4-8
+  name: custom-community-operator-catalog-v4.9
   namespace: openshift-marketplace
 spec:
   sourceType: grpc
-  image: bm-cluster-1-hyper.e2e.bos.redhat.com:5000/olm-index/community-operator-index:v4.8
-  displayName: BM Lab - Community Operator - v4.8
+  image: service-node.clus3b.t5g.lab.eng.bos.redhat.com:443/olm-index/community-operator-index:v4.9
+  displayName: BM Lab - Community Operator - v4.9
   publisher: BM Lab Registry
   updateStrategy:
     registryPoll:
@@ -119,13 +119,13 @@ When you create this object, the **Operator Lifecycle Manager (OLM)** will parse
 ```console
 NAME                          CATALOG                              AGE
 advanced-cluster-management                                        7h57m
-sriov-network-operator        BM Lab - RH operator - v4.8          9h
-ptp-operator                  BM Lab - RH operator - v4.8          9h
-local-storage-operator        BM Lab - RH operator - v4.8          9h
-performance-addon-operator    BM Lab - RH operator - v4.8          9h
-advanced-cluster-management   BM Lab - RH operator - v4.8          9h
-ocs-operator                  BM Lab - RH operator - v4.8          9h
-hive-operator                 BM Lab - Community Operator - v4.8   9h
+sriov-network-operator        BM Lab - RH operator - v4.9          9h
+ptp-operator                  BM Lab - RH operator - v4.9          9h
+local-storage-operator        BM Lab - RH operator - v4.9          9h
+performance-addon-operator    BM Lab - RH operator - v4.9          9h
+advanced-cluster-management   BM Lab - RH operator - v4.9          9h
+ocs-operator                  BM Lab - RH operator - v4.9          9h
+hive-operator                 BM Lab - Community Operator - v4.9   9h
 ```
 
 Every one of them is a "box" with all the images necessary to deploy an operator, for example `local-storage-operator` contains inside all the necessary images to deploy and make the Local Storage Operator work on disconnected environments.
@@ -168,12 +168,14 @@ This will ensure us that all the images and all the image's layers are there. So
 # Disconnected Operator Catalog Mirror and Minor Upgrade
 # Variables to set, suit to your installation
 
-export OCP_RELEASE=4.8
+export OCP_RELEASE=4.9
 export OCP_RELEASE_FULL=$OCP_RELEASE.0
 export ARCHITECTURE=x86_64
 export SIGNATURE_BASE64_FILE="signature-sha256-$OCP_RELEASE_FULL.yaml"
-export OCP_PULLSECRET_AUTHFILE='/root/pull_secret.json'
-export LOCAL_REGISTRY=bm-cluster-1-hyper.e2e.bos.redhat.com:5000
+export OCP_PULLSECRET_AUTHFILE='/root/pull-secret.json'
+export LOCAL_REGISTRY=service-node.clus3b.t5g.lab.eng.bos.redhat.com:443
+export LOCAL_REGISTRY_USERNAME=admin
+export LOCAL_REGISTRY_PASSWD=password
 export LOCAL_REGISTRY_MIRROR_TAG=/ocp4/openshift4
 export LOCAL_REGISTRY_INDEX_TAG=olm-index/redhat-operator-index:v$OCP_RELEASE
 export LOCAL_REGISTRY_INDEX_TAG_COMM=olm-index/community-operator-index:v$OCP_RELEASE
@@ -198,6 +200,16 @@ then
         echo "Usage : $0 mirror|mirror-olm|upgrade"
         exit
 fi
+mirror_olm () {
+# hack for broken operators
+for packagemanifest in $(cat /root/pkg_manifest) ; do
+  for package in $(oc get $packagemanifest -o jsonpath='{.status.channels[*].currentCSVDesc.relatedImages}' | sed "s/ /\n/g" | tr -d '[],' | sed 's/"/ /g') ; do
+    echo
+    echo "Package: ${package}"
+   skopeo copy --dest-creds $LOCAL_REGISTRY_USERNAME:$LOCAL_REGISTRY_PASSWD docker://$package docker://$LOCAL_REGISTRY/$LOCAL_REGISTRY_IMAGE_TAG/$(echo $package | awk -F'/' '{print $2}')-$(basename $package) --all --authfile $OCP_PULLSECRET_AUTHFILE
+  done
+done
+}
 
 mirror () {
 # Mirror redhat-operator index image
@@ -206,8 +218,8 @@ if [ "${RH_OP}" = true ]
   then
     echo "opm index prune --from-index $RH_OP_INDEX --packages $RH_OP_PACKAGES --tag $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG"
     opm index prune --from-index $RH_OP_INDEX --packages $RH_OP_PACKAGES --tag $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG
-    GODEBUG=x509ignoreCN=0 podman push --tls-verify=false $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG --authfile $OCP_PULLSECRET_AUTHFILE
-    GODEBUG=x509ignoreCN=0 oc adm catalog mirror $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG $LOCAL_REGISTRY/$LOCAL_REGISTRY_IMAGE_TAG --registry-config=$OCP_PULLSECRET_AUTHFILE
+    GODEBUG=x509ignoreCN=0 podman push --tls-verify=false $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG --creds=$LOCAL_REGISTRY_USERNAME:$LOCAL_REGISTRY_PASSWD
+    GODEBUG=x509ignoreCN=0 oc adm catalog mirror $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG $LOCAL_REGISTRY/$LOCAL_REGISTRY_IMAGE_TAG  --max-per-registry=1
 
     cat > redhat-operator-index-manifests/catalogsource.yaml << EOF
 apiVersion: operators.coreos.com/v1alpha1
@@ -240,8 +252,8 @@ if [ "${COMM_OP}" = true ]
   then
     echo "opm index prune --from-index $COMM_OP_INDEX --packages $COMM_OP_PACKAGES --tag $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG_COMM"
     opm index prune --from-index $COMM_OP_INDEX --packages $COMM_OP_PACKAGES --tag $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG_COMM
-    GODEBUG=x509ignoreCN=0 podman push --tls-verify=false $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG_COMM --authfile $OCP_PULLSECRET_AUTHFILE
-    GODEBUG=x509ignoreCN=0 oc adm catalog mirror $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG_COMM $LOCAL_REGISTRY/$LOCAL_REGISTRY_IMAGE_TAG --registry-config=$OCP_PULLSECRET_AUTHFILE
+    GODEBUG=x509ignoreCN=0 podman push --tls-verify=false $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG_COMM --creds=$LOCAL_REGISTRY_USERNAME:$LOCAL_REGISTRY_PASSWD
+    GODEBUG=x509ignoreCN=0 oc adm catalog mirror $LOCAL_REGISTRY/$LOCAL_REGISTRY_INDEX_TAG_COMM $LOCAL_REGISTRY/$LOCAL_REGISTRY_IMAGE_TAG --max-per-registry=1
 
     cat > community-operator-index-manifests/catalogsource.yaml << EOF
 apiVersion: operators.coreos.com/v1alpha1
@@ -270,19 +282,6 @@ if [ "${MARKETPLACE_OP}" = true ]
   then
     "echo 3"
 fi
-
-}
-
-mirror-olm () {
-# hack for broken operators
-
-for packagemanifest in $(oc get packagemanifest -n openshift-marketplace -o name) ; do
-  for package in $(oc get $packagemanifest -o jsonpath='{.status.channels[*].currentCSVDesc.relatedImages}' | sed "s/ /\n/g" | tr -d '[],' | sed 's/"/ /g') ; do
-    echo
-    echo "Package: ${package}"
-    skopeo copy docker://$package docker://$LOCAL_REGISTRY/$LOCAL_REGISTRY_IMAGE_TAG/$(echo $package | awk -F'/' '{print $2}')-$(basename $package) --all --authfile $OCP_PULLSECRET_AUTHFILE
-  done
-done
 
 }
 
@@ -324,7 +323,7 @@ case "$1" in
 		mirror
 		;;
 	mirror-olm)
-		mirror-olm
+		mirror_olm
 		;;
 	upgrade)
 		upgrade
