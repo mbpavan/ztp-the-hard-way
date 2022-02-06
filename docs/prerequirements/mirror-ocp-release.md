@@ -22,9 +22,9 @@ First thing we need it's the `oc` client, to best way to do it's downloading fro
 
 ## Variables
 export PULL_SECRET_JSON=$(pwd)/pull_secret.json
-export LOCAL_REGISTRY=$(hostname):5000
+export LOCAL_REGISTRY=$(hostname):443
 export LOCAL_REPOSITORY=ocp4
-export OCP_RELEASE=4.8.0-fc.9-x86_64
+export OCP_RELEASE=4.9.0-x86_64
 export OCP_REGISTRY=quay.io/openshift-release-dev/ocp-release
 
 ## Functional
@@ -33,6 +33,7 @@ function ocp_mirror_release() {
          --from=${OCP_REGISTRY}:${OCP_RELEASE} \
          --to=${LOCAL_REGISTRY}/${LOCAL_REPOSITORY} \
          --to-release-image=${LOCAL_REGISTRY}/${LOCAL_REPOSITORY}:${OCP_RELEASE}
+         --max-per-registry=1
 }
 
 function download_oc_client() {
